@@ -64,3 +64,24 @@ Documentation: `C-c C-d C-d`
 `M-. and M-,` Navigate to source code for symbol under point and return to your original buffer.
 `C-c C-d C-a` Apropros search; find arbitrary text across function names and documentation.
 
+## vscode
+
+install `calva`
+
+### calva shortcuts
+
+`C-k C-i` docs
+
+`C-Enter`, `M-Enter` Evalute forms
+
+`Ctrl+Alt+C Enter` loading a file
+
+`Ctrl+Alt+Enter` after each form in `->`
+
+`Ctrl+Alt+C Ctrl+Alt+D` Interupt command execution
+
+### paredit shortcuts
+
+`Shift+Alt+RightArrow` select outside
+
+`Shift+Alt+LeftArrow` select inside (Shrink selection)
