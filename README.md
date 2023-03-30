@@ -85,3 +85,9 @@ install `calva`
 `Shift+Alt+RightArrow` select outside
 
 `Shift+Alt+LeftArrow` select inside (Shrink selection)
+
+`Ctrl+Alt+s` remove enclosing brackets
+
+`Ctrl+Alt+Shift+` wrap `p`-() `s`-[] `c`-{} `q`-""
+
+`Ctrl+Alt+r` + `Ctrl+Alt+` rewrap `p`-() `s`-[] `c`-{} `q`-""
