@@ -43,24 +43,42 @@
   (let [X (:model (last prev-layers))
         W (:weights current-layer)
         b (:bias current-layer)
-        Z (add-bias-vector (mmul W X) b)
-        activation (:activation current-layer)]
+        Z (add-bias-vector (mmul W X) b)]
     (conj prev-layers
-          (assoc (assoc current-layer :Z Z) :model (activation Z)))))
+          (merge current-layer {:Z Z
+                                :input X
+                                :model ((:activation current-layer) Z)}))))
 
 (defn first-backpropagation-step
   "dZ3 = A3 - Y,
    dW3 = 1/N * dZ3 Dot A2.T,
    db3 = 1/N * SumOverAxis(dZ3)"
-  [models Y]
-  (let [A-last (:model (first (reverse models)))
-        A-prev (:model (nth (reverse models) 1))
+  [model Y]
+  (let [A-last (:model model)
+        A-prev (:input model)
         amount-of-samples ((shape A-last) 1)
         normalizator (/ 1.0 amount-of-samples)
         dZ (- A-last Y)
         dW (* normalizator (mmul dZ (transpose A-prev)))
         db (* normalizator (sum-over-axis dZ))]
-    [dZ dW db]))
+    (merge model {:dZ dZ :dW dW :db db})))
+
+(defn backpropagation
+  "dZ2 = W3.T dot dZ3 * RELuPrime(Z2),
+   dW2 = 1/N * dZ2 dot A1.T,
+   db2 = 1/N * SumOverAxis(dZ2)
+   ***
+   dZ1 = W2.T dot dZ2 * RELuPrime(Z1),
+   dW1 = 1/N * dZ1 dot X.T,
+   db1 = 1/N * SumOverAxis(dZ1)"
+  [prevs curr]
+  (let [prev (last prevs)
+        amount-of-samples ((shape (:model prev)) 1)
+        normalizator (/ 1.0 amount-of-samples)
+        dZ (* (mmul (transpose (:weights prev)) (:dZ prev)) ((:activation-prime curr) (:Z curr)))
+        dW (* (mmul dZ (transpose (:input curr))) normalizator)
+        db (* normalizator (sum-over-axis dZ))]
+    (conj prevs (merge curr {:dZ dZ :dW dW :db db}))))
 
 (comment
   (def X (array [[1.0 2.0 10.0]
@@ -94,12 +112,9 @@
 
   (def models (reduce apply-layer [{:model X}] layers))
 
-  (first-backpropagation-step models Y)
-
-  ;; backward propagation
-  ;; gradient
-
-  nil)
+  (reduce backpropagation
+          [(first-backpropagation-step (first (reverse models)) Y)]
+          (rest (reverse (rest models)))))
 
 (defn train-a-model [train labels]
   (let [a-shape (shape train)
