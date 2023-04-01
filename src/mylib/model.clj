@@ -49,8 +49,14 @@
                                 :input X
                                 :model ((:activation current-layer) Z)}))))
 
+(defn forward-propagation
+  "Z[L] = W[L] dot A[L-1] + b[L]
+   A[L] = a(Z[L])"
+  [train layers] (reduce apply-layer [{:model train}] layers))
+
 (defn first-backpropagation-step
-  "dZ3 = A3 - Y,
+  "ex.: L=3
+   dZ3 = A3 - Y,
    dW3 = 1/N * dZ3 Dot A2.T,
    db3 = 1/N * SumOverAxis(dZ3)"
   [model Y]
@@ -64,7 +70,8 @@
     (merge model {:dZ dZ :dW dW :db db})))
 
 (defn backpropagation
-  "dZ2 = W3.T dot dZ3 * RELuPrime(Z2),
+  "ex.: L=3
+   dZ2 = W3.T dot dZ3 * RELuPrime(Z2),
    dW2 = 1/N * dZ2 dot A1.T,
    db2 = 1/N * SumOverAxis(dZ2)
    ***
@@ -110,7 +117,7 @@
                 :weights (array [[0.11 0.13 0.76 0.55 0.17]])
                 :bias (array [[0.3]])}])
 
-  (def models (reduce apply-layer [{:model X}] layers))
+  (def models (forward-propagation X layers))
 
   (reduce backpropagation
           [(first-backpropagation-step (first (reverse models)) Y)]
@@ -123,9 +130,10 @@
         layers [(make-a-layer activation-relu activation-prime-relu [12 feature-space])
                 (make-a-layer activation-relu activation-prime-relu [10 12])
                 (make-a-layer activation-sigmoid activation-prime-sigmoid [1 10])]
-        models (reduce apply-layer [{:model train}] layers)]
+        models (forward-propagation train layers)]
     (println "feature space:" feature-space "amount of samples:" amount-of-samples)
     (println (shape labels) (shape train))
     (println labels train)
-    models))
-
+    (reduce backpropagation
+            [(first-backpropagation-step (first (reverse models)) labels)]
+            (rest (reverse (rest models))))))
