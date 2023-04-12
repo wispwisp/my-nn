@@ -1,0 +1,16 @@
+body {
+    background-color: Cornsilk;
+}
+
+#header-links {
+    background-color: BurlyWood;
+    padding: 10px;
+}
+
+h1 {
+    color: CornflowerBlue;
+}
+
+#a-card {
+    margin-left: 50%;
+}

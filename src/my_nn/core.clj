@@ -46,3 +46,6 @@
         train (m/array (reduce (fn [i v] (conj i (rest v))) [] vectorized))]
     (println fullpath header)
     (ml/train-a-model (m/transpose train) (m/transpose labels))))
+
+;; apply, partial, comp, into, conj, first/last, doall/dorun
+;; assoc
