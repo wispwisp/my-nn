@@ -1,6 +1,6 @@
 (ns mylib.model
-  (:refer-clojure :exclude [* / + - exp])
-  (:require [clojure.core.matrix :refer [array mmul emap shape exp transpose]]
+  (:refer-clojure :exclude [* / + -])
+  (:require [clojure.core.matrix :refer [array mmul emap shape transpose columns esum]]
             [clojure.core.matrix.operators :refer [+ - * /]]
             [clojure.core.matrix.random :refer [randoms]]))
 
@@ -25,12 +25,10 @@
 (defn activation-prime-relu [X]
   (emap (fn [x] (if (< x 0.0) 0.0 1.0)) X))
 
-(defn activation-sigmoid "s(X, W) = 1/(1+e^{-Xw})" [X]
-  (emap (fn [x] (/ 1.0 (+ 1.0 (exp (- x))))) X))
-
-(defn activation-prime-sigmoid [X]
-  (let [f' (fn [x] (* (/ 1 (+ 1 (exp (- x)))) (- 1 (/ 1 (+ 1 (exp (- x)))))))]
-    (emap f' X)))
+(defn activation-softmax [X]
+  (let [a-columns (columns X)
+        sums (map esum a-columns)]
+    (transpose (array (map (fn [col sum] (map #(/ % sum) col)) a-columns sums)))))
 
 (defn make-a-layer [activation activation-prime weights-shape]
   (let [N (nth weights-shape 0)
@@ -87,53 +85,55 @@
         db (* normalizator (sum-over-axis dZ))]
     (conj prevs (merge curr {:dZ dZ :dW dW :db db}))))
 
-(comment
-  (def X (array [[1.0 2.0 10.0]
-                 [1.0 2.0 10.0]
-                 [1.0 2.0 10.0]
-                 [1.0 2.0 10.0]]))
-  (def Y (array [[1.0 0.0 1.0]]))
+(defn update-layers [layers backpropagations-result]
+  (let [alpha_coef 0.07
+        updates (map (fn [layer backpropagation-result]
+                       [(- (:weights layer) (* alpha_coef (:dW backpropagation-result)))
+                        (- (:bias layer) (* alpha_coef (:db backpropagation-result)))])
+                     layers (reverse backpropagations-result))]
+    (map (fn [layer [new-weight new-bias]] (assoc layer :weights new-weight :bias new-bias))
+         layers updates)))
 
-  (def layers [{:activation activation-relu
-                :activation-prime activation-prime-relu
-                :weights (array [[0.37 0.15 0.35 0.16]
-                                 [0.45 0.3 0.3 0.28]])
-                :bias (array [[0.1]
-                              [0.1]])}
-               {:activation activation-relu
-                :activation-prime activation-prime-relu
-                :weights (array [[0.87 0.99]
-                                 [0.15 0.19]
-                                 [0.35 0.15]
-                                 [0.75 0.66]
-                                 [0.27 0.77]])
-                :bias (array [[0.2]
-                              [0.2]
-                              [0.2]
-                              [0.2]
-                              [0.2]])}
-               {:activation activation-sigmoid
-                :activation-prime activation-prime-sigmoid
-                :weights (array [[0.11 0.13 0.76 0.55 0.17]])
-                :bias (array [[0.3]])}])
+(defn extract-lables [X] (map #(.indexOf % (apply max %)) (columns X)))
 
-  (def models (forward-propagation X layers))
+(defn count-correct [predictions classes]
+  (when (not= (count predictions) (count classes))
+    (throw (new Exception "Inconsistent vectors size")))
+  (reduce + (map (fn [p c] (if (= p c) 1 0)) predictions classes)))
 
-  (reduce backpropagation
-          [(first-backpropagation-step (first (reverse models)) Y)]
-          (rest (reverse (rest models)))))
-
-(defn train-a-model [train labels]
+(defn train-a-model [train labels epochs]
   (let [a-shape (shape train)
         feature-space (a-shape 0)
         amount-of-samples (a-shape 1)
-        layers [(make-a-layer activation-relu activation-prime-relu [12 feature-space])
-                (make-a-layer activation-relu activation-prime-relu [10 12])
-                (make-a-layer activation-sigmoid activation-prime-sigmoid [1 10])]
-        models (forward-propagation train layers)]
+        classes (extract-lables labels)
+        layers (atom [(make-a-layer activation-relu activation-prime-relu [15 feature-space])
+                      (make-a-layer activation-relu activation-prime-relu [5 15])
+                      (make-a-layer activation-softmax nil [10 5])])
+        models (atom (forward-propagation train @layers))]
     (println "feature space:" feature-space "amount of samples:" amount-of-samples)
-    (println (shape labels) (shape train))
-    (println labels train)
-    (reduce backpropagation
-            [(first-backpropagation-step (first (reverse models)) labels)]
-            (rest (reverse (rest models))))))
+    (println "transposed lables shape:" (shape labels) "transposed train shape:" (shape train))
+    (println "Lables[" (count classes) "]: " (take 15 classes) "...")
+    (println "Start learning...")
+    (doall
+     (for [i (range epochs)]
+       (do
+         (swap! layers
+                (fn [old-layers]
+                  (update-layers old-layers
+                                 (reduce backpropagation
+                                         [(first-backpropagation-step (first (reverse @models)) labels)]
+                                         (rest (reverse (rest @models)))))))
+         (let [amount (count classes)
+               evaluated-model (forward-propagation train @layers)
+               correct-amount (count-correct classes (extract-lables (:model (last evaluated-model))))]
+           (swap! models (fn [_]  evaluated-model))
+           (println "Epoch[" i "] accuracity:"  (/ (double correct-amount) (double amount)))))))
+    (println "Done learning.")
+    @layers))
+
+(defn evaluate-a-model [network test labels]
+  (let [classes (extract-lables labels)
+        evaluated (forward-propagation test network)
+        amount (count classes)
+        correct-amount (count-correct classes (extract-lables (:model (last evaluated))))]
+    (/ (double correct-amount) (double amount))))

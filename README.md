@@ -14,7 +14,7 @@
 
 ### new proj
 
-`lein new app clojure-noob`
+`lein new app my-nn`
 
 `lein run`
 
@@ -28,7 +28,7 @@ then fetch: `lein deps`
 
 `lein uberjar`
 
-`java -jar target/uberjar/clojure-noob-0.1.0-SNAPSHOT-standalone.jar`
+`java -jar target/uberjar/my-nn-0.1.0-SNAPSHOT-standalone.jar`
 
 ## REPL
 
