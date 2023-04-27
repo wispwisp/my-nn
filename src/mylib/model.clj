@@ -1,11 +1,11 @@
 (ns mylib.model
   (:refer-clojure :exclude [* / + -])
-  (:require [clojure.core.matrix :refer [array mmul emap shape transpose columns esum]]
+  (:require [clojure.core.matrix :refer [array mmul emap shape transpose columns ereduce esum log exp]]
             [clojure.core.matrix.operators :refer [+ - * /]]
             [clojure.core.matrix.random :refer [randoms]]))
 
 (defn make-a-random-matrix [n m]
-  (array (for [_ (range 0 n)] (into [] (take m (randoms))))))
+  (array (for [_ (range n)] (array (take m (randoms))))))
 
 (defn add-bias-vector "Add a line to line. Need for ingnoring multiple samples" [X b]
   (let [x-shape (shape X)
@@ -24,6 +24,9 @@
 
 (defn activation-prime-relu [X]
   (emap (fn [x] (if (< x 0.0) 0.0 1.0)) X))
+
+(defn activation-sigmoid "s(X, W) = 1/(1+e^{-Xw})" [X]
+  (emap (fn [x] (/ 1.0 (+ 1.0 (exp (- x))))) X))
 
 (defn activation-softmax [X]
   (let [a-columns (columns X)
@@ -81,7 +84,7 @@
         amount-of-samples ((shape (:model prev)) 1)
         normalizator (/ 1.0 amount-of-samples)
         dZ (* (mmul (transpose (:weights prev)) (:dZ prev)) ((:activation-prime curr) (:Z curr)))
-        dW (* (mmul dZ (transpose (:input curr))) normalizator)
+        dW (* normalizator (mmul dZ (transpose (:input curr))))
         db (* normalizator (sum-over-axis dZ))]
     (conj prevs (merge curr {:dZ dZ :dW dW :db db}))))
 
@@ -101,33 +104,42 @@
     (throw (new Exception "Inconsistent vectors size")))
   (reduce + (map (fn [p c] (if (= p c) 1 0)) predictions classes)))
 
+(defn compute-cost [X Y N]
+  (let [cost-matrix (- (+ (* Y (log X)) (* (- 1.0 Y) (log (- 1.0 X)))))
+        euclidean-norm (Math/sqrt (ereduce (fn [c n] (+ c (* n n))) 0 cost-matrix))]
+    (/ euclidean-norm (double N))))
+
+(defn train-step [iteration layers models labels classes amount-of-samples train]
+  (swap! layers
+         (fn [old-layers]
+           (update-layers old-layers
+                          (reduce backpropagation
+                                  [(first-backpropagation-step (first (reverse @models)) labels)]
+                                  (rest (reverse (rest @models)))))))
+  (let [evaluated-model (forward-propagation train @layers)
+        correct-amount (count-correct classes (extract-lables (:model (last evaluated-model))))]
+    (swap! models (fn [_] evaluated-model))
+    (println "Epoch[" iteration "]:"
+             "accuracity:" (/ (double correct-amount) (double (count classes)))
+             "cost:" (compute-cost (:model (first (reverse @models))) labels amount-of-samples))))
+
 (defn train-a-model [train labels epochs]
   (let [a-shape (shape train)
         feature-space (a-shape 0)
         amount-of-samples (a-shape 1)
+        output-size ((shape labels) 0)
         classes (extract-lables labels)
-        layers (atom [(make-a-layer activation-relu activation-prime-relu [15 feature-space])
-                      (make-a-layer activation-relu activation-prime-relu [5 15])
-                      (make-a-layer activation-softmax nil [10 5])])
+        layers (atom [(make-a-layer activation-relu activation-prime-relu [20 feature-space])
+                      (make-a-layer activation-relu activation-prime-relu [5 20])
+                      (make-a-layer activation-softmax nil [output-size 5])])
         models (atom (forward-propagation train @layers))]
-    (println "feature space:" feature-space "amount of samples:" amount-of-samples)
+    (println "feature space:" feature-space "amount of samples:" amount-of-samples "output size:" output-size)
     (println "transposed lables shape:" (shape labels) "transposed train shape:" (shape train))
     (println "Lables[" (count classes) "]: " (take 15 classes) "...")
     (println "Start learning...")
     (doall
      (for [i (range epochs)]
-       (do
-         (swap! layers
-                (fn [old-layers]
-                  (update-layers old-layers
-                                 (reduce backpropagation
-                                         [(first-backpropagation-step (first (reverse @models)) labels)]
-                                         (rest (reverse (rest @models)))))))
-         (let [amount (count classes)
-               evaluated-model (forward-propagation train @layers)
-               correct-amount (count-correct classes (extract-lables (:model (last evaluated-model))))]
-           (swap! models (fn [_]  evaluated-model))
-           (println "Epoch[" i "] accuracity:"  (/ (double correct-amount) (double amount)))))))
+       (train-step i layers models labels classes amount-of-samples train)))
     (println "Done learning.")
     @layers))
 
