@@ -2,6 +2,8 @@
   (:require [clojure.string :as str]
             [clojure.core.matrix :as m]))
 
+(m/set-current-implementation :vectorz)
+
 (defn split-a-csv-line [line separator]
   (loop [[character & rest] line
          current ""

@@ -4,6 +4,8 @@
             [mylib.csvutils :as mycsv]
             [mylib.model :as ml]))
 
+(m/set-current-implementation :vectorz)
+
 (defn -main
   "Entrypoint to a programm"
   [& _args]

@@ -5,6 +5,7 @@
             :url "https://www.eclipse.org/legal/epl-2.0/"}
   :dependencies [[org.clojure/clojure "1.10.0"]
                  [net.mikera/core.matrix "0.63.0"]
+                 [net.mikera/vectorz-clj "0.48.0"]
                  [ring "1.10.0"]
                  [ring/ring-anti-forgery "1.3.0"]
                  [ring/ring-defaults "0.3.4"]

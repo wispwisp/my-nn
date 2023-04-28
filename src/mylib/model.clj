@@ -1,11 +1,20 @@
 (ns mylib.model
   (:refer-clojure :exclude [* / + -])
-  (:require [clojure.core.matrix :refer [array mmul emap shape transpose columns ereduce esum log exp]]
+  (:require [clojure.core.matrix :refer [array mmul emap shape transpose columns ereduce esum
+                                         set-current-implementation log exp]]
             [clojure.core.matrix.operators :refer [+ - * /]]
             [clojure.core.matrix.random :refer [randoms]]))
 
-(defn make-a-random-matrix [n m]
-  (array (for [_ (range n)] (array (take m (randoms))))))
+(set-current-implementation :vectorz)
+
+(def learning-rate 0.07)
+(def regularization_coef 1.0)
+
+(defn make-a-random-matrix
+  ([n m]
+   (array (for [_ (range n)] (array (take m (randoms))))))
+  ([n m d]
+   (array (for [_ (range n)] (emap / (array (take m (randoms))) d)))))
 
 (defn add-bias-vector "Add a line to line. Need for ingnoring multiple samples" [X b]
   (let [x-shape (shape X)
@@ -14,7 +23,7 @@
         b-space (b-shape 0)]
     (when (or (not= x-space b-space) (not= (b-shape 1) 1))
       (throw (new Exception "Inconsistent bias vector")))
-    (array (map (fn [X-i b-i] (array (map (partial + (b-i 0)) X-i))) X b))))
+    (array (map (fn [X-i b-i] (array (map (partial + (first b-i)) X-i))) X b))))
 
 (defn sum-over-axis [X]
   (array (map (fn [x] [(reduce + x)]) X)))
@@ -30,15 +39,17 @@
 
 (defn activation-softmax [X]
   (let [a-columns (columns X)
-        sums (map esum a-columns)]
-    (transpose (array (map (fn [col sum] (map #(/ % sum) col)) a-columns sums)))))
+        sums (->> a-columns
+                  (map exp)
+                  (map esum))]
+    (transpose (array (map (fn [col sum] (map #(/ (exp %) sum) col)) a-columns sums)))))
 
 (defn make-a-layer [activation activation-prime weights-shape]
   (let [N (nth weights-shape 0)
         M (nth weights-shape 1)] {:activation activation
                                   :activation-prime activation-prime
-                                  :weights (make-a-random-matrix N M)
-                                  :bias (make-a-random-matrix N 1)}))
+                                  :weights (make-a-random-matrix N M 10)
+                                  :bias (make-a-random-matrix N 1 10)}))
 
 (defn apply-layer [prev-layers current-layer]
   (let [X (:model (last prev-layers))
@@ -53,7 +64,8 @@
 (defn forward-propagation
   "Z[L] = W[L] dot A[L-1] + b[L]
    A[L] = a(Z[L])"
-  [train layers] (reduce apply-layer [{:model train}] layers))
+  [train layers]
+  (reduce apply-layer [{:model train}] layers))
 
 (defn first-backpropagation-step
   "ex.: L=3
@@ -65,8 +77,9 @@
         A-prev (:input model)
         amount-of-samples ((shape A-last) 1)
         normalizator (/ 1.0 amount-of-samples)
+        regularization (* (/ regularization_coef amount-of-samples) (:weights model))
         dZ (- A-last Y)
-        dW (* normalizator (mmul dZ (transpose A-prev)))
+        dW (+ (* normalizator (mmul dZ (transpose A-prev))) regularization)
         db (* normalizator (sum-over-axis dZ))]
     (merge model {:dZ dZ :dW dW :db db})))
 
@@ -83,21 +96,22 @@
   (let [prev (last prevs)
         amount-of-samples ((shape (:model prev)) 1)
         normalizator (/ 1.0 amount-of-samples)
+        regularization (* (/ regularization_coef amount-of-samples) (:weights curr))
         dZ (* (mmul (transpose (:weights prev)) (:dZ prev)) ((:activation-prime curr) (:Z curr)))
-        dW (* normalizator (mmul dZ (transpose (:input curr))))
+        dW (+ (* normalizator (mmul dZ (transpose (:input curr)))) regularization)
         db (* normalizator (sum-over-axis dZ))]
     (conj prevs (merge curr {:dZ dZ :dW dW :db db}))))
 
-(defn update-layers [layers backpropagations-result]
-  (let [alpha_coef 0.07
-        updates (map (fn [layer backpropagation-result]
-                       [(- (:weights layer) (* alpha_coef (:dW backpropagation-result)))
-                        (- (:bias layer) (* alpha_coef (:db backpropagation-result)))])
-                     layers (reverse backpropagations-result))]
+(defn update-weights [model backpropagations-result]
+  (let [updates (map (fn [layer backpropagation-result]
+                       [(- (:weights layer) (* learning-rate (:dW backpropagation-result)))
+                        (- (:bias layer) (* learning-rate (:db backpropagation-result)))])
+                     model (reverse backpropagations-result))]
     (map (fn [layer [new-weight new-bias]] (assoc layer :weights new-weight :bias new-bias))
-         layers updates)))
+         model updates)))
 
-(defn extract-lables [X] (map #(.indexOf % (apply max %)) (columns X)))
+(defn extract-lables [X]
+  (map #(first (apply max-key second (map-indexed vector %))) (columns X)))
 
 (defn count-correct [predictions classes]
   (when (not= (count predictions) (count classes))
@@ -109,19 +123,17 @@
         euclidean-norm (Math/sqrt (ereduce (fn [c n] (+ c (* n n))) 0 cost-matrix))]
     (/ euclidean-norm (double N))))
 
-(defn train-step [iteration layers models labels classes amount-of-samples train]
-  (swap! layers
-         (fn [old-layers]
-           (update-layers old-layers
-                          (reduce backpropagation
-                                  [(first-backpropagation-step (first (reverse @models)) labels)]
-                                  (rest (reverse (rest @models)))))))
-  (let [evaluated-model (forward-propagation train @layers)
+(defn train-step [iteration model labels classes amount-of-samples train]
+  (let [backpropagation-result (reduce backpropagation
+                                       [(first-backpropagation-step (first (reverse @model)) labels)]
+                                       (rest (reverse (rest @model))))
+        current-model (update-weights (rest @model) backpropagation-result)
+        evaluated-model (forward-propagation train current-model)
         correct-amount (count-correct classes (extract-lables (:model (last evaluated-model))))]
-    (swap! models (fn [_] evaluated-model))
+    (swap! model (fn [_] evaluated-model))
     (println "Epoch[" iteration "]:"
              "accuracity:" (/ (double correct-amount) (double (count classes)))
-             "cost:" (compute-cost (:model (first (reverse @models))) labels amount-of-samples))))
+             "cost:" (compute-cost (:model (last @model)) labels amount-of-samples))))
 
 (defn train-a-model [train labels epochs]
   (let [a-shape (shape train)
@@ -129,23 +141,24 @@
         amount-of-samples (a-shape 1)
         output-size ((shape labels) 0)
         classes (extract-lables labels)
-        layers (atom [(make-a-layer activation-relu activation-prime-relu [20 feature-space])
+        model (atom (forward-propagation
+                     train
+                     [(make-a-layer activation-relu activation-prime-relu [20 feature-space])
                       (make-a-layer activation-relu activation-prime-relu [5 20])
-                      (make-a-layer activation-softmax nil [output-size 5])])
-        models (atom (forward-propagation train @layers))]
+                      (make-a-layer activation-softmax nil [output-size 5])]))]
     (println "feature space:" feature-space "amount of samples:" amount-of-samples "output size:" output-size)
     (println "transposed lables shape:" (shape labels) "transposed train shape:" (shape train))
     (println "Lables[" (count classes) "]: " (take 15 classes) "...")
     (println "Start learning...")
     (doall
      (for [i (range epochs)]
-       (train-step i layers models labels classes amount-of-samples train)))
+       (train-step i model labels classes amount-of-samples train)))
     (println "Done learning.")
-    @layers))
+    (rest @model)))
 
-(defn evaluate-a-model [network test labels]
+(defn evaluate-a-model [model test labels]
   (let [classes (extract-lables labels)
-        evaluated (forward-propagation test network)
+        evaluated (forward-propagation test model)
         amount (count classes)
         correct-amount (count-correct classes (extract-lables (:model (last evaluated))))]
     (/ (double correct-amount) (double amount))))
