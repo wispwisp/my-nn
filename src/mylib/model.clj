@@ -125,15 +125,15 @@
 
 (defn train-step [iteration model labels classes amount-of-samples train]
   (let [backpropagation-result (reduce backpropagation
-                                       [(first-backpropagation-step (first (reverse @model)) labels)]
-                                       (rest (reverse (rest @model))))
-        current-model (update-weights (rest @model) backpropagation-result)
+                                       [(first-backpropagation-step (first (reverse model)) labels)]
+                                       (rest (reverse (rest model))))
+        current-model (update-weights (rest model) backpropagation-result)
         evaluated-model (forward-propagation train current-model)
         correct-amount (count-correct classes (extract-lables (:model (last evaluated-model))))]
-    (swap! model (fn [_] evaluated-model))
     (println "Epoch[" iteration "]:"
              "accuracity:" (/ (double correct-amount) (double (count classes)))
-             "cost:" (compute-cost (:model (last @model)) labels amount-of-samples))))
+             "cost:" (compute-cost (:model (last evaluated-model)) labels amount-of-samples))
+    evaluated-model))
 
 (defn train-a-model [train labels epochs]
   (let [a-shape (shape train)
@@ -152,7 +152,8 @@
     (println "Start learning...")
     (doall
      (for [i (range epochs)]
-       (train-step i model labels classes amount-of-samples train)))
+       (swap! model (fn [current-model]
+                      (train-step i current-model labels classes amount-of-samples train)))))
     (println "Done learning.")
     (rest @model)))
 
