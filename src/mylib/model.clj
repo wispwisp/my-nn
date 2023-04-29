@@ -7,8 +7,8 @@
 
 (set-current-implementation :vectorz)
 
-(def learning-rate 0.07)
-(def regularization_coef 1.0)
+(def learning-rate 0.1)
+(def regularization_coef 0.1)
 
 (defn make-a-random-matrix
   ([n m]

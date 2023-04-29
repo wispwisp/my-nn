@@ -11,7 +11,7 @@
   [& _args]
   (let [labels (mycsv/load-matrix-from-csv "mnist_train_labels.csv")
         train (mycsv/load-matrix-from-csv "mnist_train.csv")
-        epochs 300
+        epochs 1000
         network (ml/train-a-model (m/transpose train) (m/transpose labels) epochs)
         test_labels (mycsv/load-matrix-from-csv "mnist_test_labels.csv")
         test (mycsv/load-matrix-from-csv "mnist_test.csv")
